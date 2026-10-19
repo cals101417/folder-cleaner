@@ -19,8 +19,8 @@ The `.exe` isn't code-signed yet, so Windows SmartScreen may say "Windows protec
 | Screen | What you get |
 |---|---|
 | **Overview** | Pick or drop a folder and scan it, with live progress and a Cancel button. See the total size, the largest files and the largest subfolders, each with a size bar. Double-click a folder to look inside it. Filter by **bigger than X MB**, **older than N months** and **file type**, then send the files you pick to the Recycle Bin. |
-| **Duplicates** | Finds exact copies (same bytes, not just the same name). Choose **keep oldest**, **keep newest** or **keep shortest path**, and the other copies are pre-selected. Click any copy to switch it between Keep and Recycle. The app won't let you recycle every copy in a group. |
-| **Organize** | Sorts the loose files in a folder into `Images`, `Documents`, `Archives`, `Installers`, `Video`, `Audio` and `Other`, or into one folder per month (`2026-10`). You always see the full plan first. Name clashes become `photo (2).jpg`, so nothing is overwritten. Downloads that are still in progress are left alone. |
+| **Duplicates** | Finds exact copies (same bytes, not just the same name). Choose **keep oldest**, **keep newest** or **keep shortest path**, and the other copies are pre-selected. Click any copy to switch it between Keep and Recycle. The app won't let you recycle every copy in a group. By default it only looks at files bigger than 1 MB (you can pick 100 KB, 10 MB or any size), so the list is real wasted space, not thousands of tiny files. |
+| **Organize** | Sorts the loose files in a folder into `Images`, `Documents`, `Archives`, `Installers`, `Video`, `Audio` and `Other`, or into one folder per month (`2026-10`). You always see the full plan first. Name clashes become `photo (2).jpg`, so nothing is overwritten. Downloads that are still in progress are left alone. It won't sort a code project, where moving `package.json` would break things. |
 | **History & undo** | Every batch the app ran, with each file it touched. **Undo** moves an organize batch back. For recycled files, it points you to the Recycle Bin's own **Restore**. |
 
 ![Duplicates screen](assets/duplicates.png)
@@ -38,6 +38,7 @@ This app touches your files, so these rules are enforced in code and covered by 
 - **Stale files are skipped.** Right before recycling or moving a file, the app checks that it still has the same size and modified time as when it was scanned. If it changed, it's skipped and listed.
 - **You confirm every batch.** A dialog shows how many files and how much space before anything happens.
 - **One bad file never stops the job.** Locked or unreadable files are counted and listed, not crashed on.
+- **Code projects are left alone.** A folder with `.git`, `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, a `.sln` file or similar counts as a code project, and so does any `node_modules`, `.venv`, `__pycache__` or other folder a developer tool manages. Every project needs its own copy of its files, so Duplicates never searches inside them and Organize won't sort them. Overview still shows their size (it's useful to know `node_modules` takes 1 GB), marks them in orange, and warns you before you recycle anything inside one.
 - **Cloud files stay in the cloud.** OneDrive "online-only" placeholders aren't read during the duplicate search, so nothing gets downloaded.
 
 ## Why I built this

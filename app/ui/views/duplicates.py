@@ -8,7 +8,8 @@ import time
 import customtkinter as ctk
 
 from .. import theme as t
-from ..widgets import (Table, confirm, hint, open_in_explorer, plural, primary_button, segmented)
+from ..widgets import (Table, confirm, hint, open_in_explorer, option_menu, plural, primary_button,
+                       segmented, show_list)
 from ..worker import Throttle
 from .base import ToolView
 from ...core import actions, dupes, sizes
@@ -18,6 +19,9 @@ from ...core.scan import scan
 MAX_GROUPS = 2000          # keep the table snappy; groups are sorted by space wasted
 KEEP_LABELS = {k: label for k, (label, _key) in dupes.KEEP_POLICIES.items()}
 RECYCLE_MARK, KEEP_MARK = "✕  Recycle", "✓  Keep"
+# Tiny duplicates are rarely worth the risk or the clicks; 1 MB keeps the list to real waste.
+MIN_SIZES = {"100 KB": 100 * 1024, "1 MB": 1024 ** 2, "10 MB": 10 * 1024 ** 2, "Any size": 1}
+DEFAULT_MIN = "1 MB"
 
 
 class DuplicatesView(ToolView):
@@ -40,8 +44,15 @@ class DuplicatesView(ToolView):
         self.policy = segmented(bar, list(KEEP_LABELS.values()), command=self._policy_changed)
         self.policy.set(KEEP_LABELS.get(self.settings.get("keep_policy"), KEEP_LABELS["oldest"]))
         self.policy.grid(row=0, column=0, sticky="w")
+        hint(bar, "Files bigger than").grid(row=0, column=1, sticky="e", padx=(18, 6))
+        self.min_size = option_menu(bar, list(MIN_SIZES), self._min_size_changed, width=100)
+        saved = self.settings.get("dupe_min_size")
+        self.min_size.set(saved if saved in MIN_SIZES else DEFAULT_MIN)
+        self.min_size.grid(row=0, column=2, sticky="w")
+        bar.grid_columnconfigure(1, weight=0)
+        bar.grid_columnconfigure(3, weight=1)
         self.summary = ctk.CTkLabel(bar, text="", font=t.font(13), text_color=t.MUTED, anchor="e")
-        self.summary.grid(row=0, column=1, sticky="e")
+        self.summary.grid(row=0, column=3, sticky="e")
 
         self.table = Table(b, [("mark", "", 100, "w"), ("name", "File", 260, "w"),
                                ("folder", "Folder", 260, "w"), ("date", "Modified", 130, "w"),
@@ -51,7 +62,7 @@ class DuplicatesView(ToolView):
         self.table.tree.bind("<space>", self._toggle_selected)
         self.table.tree.bind("<Double-1>", self._open)
         hint(b, "Click Keep / Recycle to switch a copy. Double-click a file to see it in Explorer. "
-                "The app won't let you recycle every copy in a group."
+                "Code projects (repos, node_modules, venvs) are never searched, so nothing in them breaks."
              ).grid(row=2, column=0, sticky="w", pady=(8, 0))
 
         self.recycle_btn = primary_button(self.footer, "Recycle", self.recycle, width=220, danger=True)
@@ -88,11 +99,13 @@ class DuplicatesView(ToolView):
         self.find_btn.set_enabled(False)
         progress = Throttle(self.worker, self._progress, 0.15)
         cancel = self.worker.cancel
+        min_size = MIN_SIZES[self.min_size.get()]
 
         def job():
             result = cached if cached is not None and cached.root == folder else \
                 scan(folder, guard=self.app.guard, cancel=cancel)
-            return result, dupes.find_duplicates(result.files, progress=progress, cancel=cancel)
+            return result, dupes.find_duplicates(result.files, min_size=min_size, progress=progress,
+                                                 cancel=cancel)
 
         self.worker.run(job, self._found, self._failed, self._cancelled)
 
@@ -120,25 +133,64 @@ class DuplicatesView(ToolView):
         self.find_btn.set_enabled(True, "Search again")
         self.app.scan = scan_result
         self.result = result
-        self.groups = result.groups[:MAX_GROUPS]
+        self._show_groups()
+        self._report()
+
+    def _report(self) -> None:
+        result, scan_result = self.result, self.app.scan
+        groups = self._visible_groups()
+        if not groups:
+            text = "No duplicates found."
+        else:
+            text = (f"{plural(len(groups), 'group')} of copies, "
+                    f"{sizes.human_size(sum(g.wasted for g in groups))} could be freed.")
+            if len(groups) > MAX_GROUPS:
+                text = f"{text[:-1]} (showing the {MAX_GROUPS:,} biggest)."
+        left_out = len(scan_result.projects) + len(result.skipped) + (1 if result.online_only else 0)
+        if not left_out:
+            acts = []
+        elif scan_result.projects:
+            acts = [(f"{plural(len(scan_result.projects), 'code project')} left out", self._show_left_out)]
+        else:
+            acts = [("What was left out", self._show_left_out)]
+        self.status.show(text, "ok", acts)
+
+    def _show_left_out(self) -> None:
+        result, scan_result = self.result, self.app.scan
+        if result is None or scan_result is None:
+            return
+        rows = [(p.root, f"Not searched: {p.describe()}. Every project needs its own copy of these "
+                         "files, so recycling one would break it.")
+                for p in sorted(scan_result.projects.values(), key=lambda p: p.root.lower())]
+        rows += [(path, f"Couldn't be read: {why}") for path, why in result.skipped]
+        if result.online_only:
+            rows.append(("OneDrive / cloud files", f"{plural(result.online_only, 'online-only file')} "
+                         "skipped, so nothing gets downloaded."))
+        note = "These weren't compared. Nothing happened to them."
+        if result.min_size > 1:
+            note += (f" Files under {sizes.human_size(result.min_size)} were also ignored "
+                     f"({plural(result.too_small, 'file')}).")
+        show_list(self, "Left out of the search", note, rows[:3000])
+
+    def _visible_groups(self) -> list:
+        limit = MIN_SIZES[self.min_size.get()]
+        return [g for g in self.result.groups if g.size >= limit] if self.result else []
+
+    def _show_groups(self) -> None:
+        self.groups = self._visible_groups()[:MAX_GROUPS]
         self.marks = dupes.default_marks(self.groups, self._policy_key())
         self._fill()
-        if not result.groups:
-            text, kind = f"No duplicates among {plural(len(scan_result.files), 'file')}.", "ok"
+
+    def _min_size_changed(self, label: str) -> None:
+        self.settings["dupe_min_size"] = label
+        if self.result is None:
+            return
+        if MIN_SIZES[label] >= self.result.min_size:   # stricter limit: filter what we already have
+            self._show_groups()
+            self._report()
         else:
-            text = (f"Found {plural(len(result.groups), 'group')} of copies. "
-                    f"{sizes.human_size(result.wasted)} could be freed.")
-            if len(result.groups) > MAX_GROUPS:
-                text += f" Showing the {MAX_GROUPS:,} groups that waste the most space."
-            kind = "ok"
-        extra = []
-        if result.skipped:
-            extra.append(f"{plural(len(result.skipped), 'file')} couldn't be read")
-        if result.online_only:
-            extra.append(f"{plural(result.online_only, 'online-only file')} skipped so nothing downloads")
-        if extra:
-            text += " " + "; ".join(extra).capitalize() + "."
-        self.status.show(text, kind)
+            self._empty()
+            self.status.show(f"Press Find duplicates to include files down to {label}.", "info")
 
     # ----- table -----
     def _policy_key(self) -> str:

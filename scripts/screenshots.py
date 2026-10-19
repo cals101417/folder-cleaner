@@ -1,7 +1,7 @@
 """Drives the real UI through every screen and saves screenshots (also a smoke test).
 
 Usage: python scripts/screenshots.py [out_dir]
-Needs demo/Downloads (run scripts/make_demo.py first). Recycling goes to demo/_bin, not the
+Needs the demo folder (run scripts/make_demo.py first). Recycling goes to demo/_bin, not the
 real Recycle Bin, and the History journal is a throwaway file in demo/.
 """
 
@@ -11,7 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-DEMO = ROOT / "demo"
+DEMO = ROOT / "demo"          # shots, fake bin, throwaway journal
+sys.path.insert(0, str(ROOT / "scripts"))
+from make_demo import ROOT as DOWNLOADS  # noqa: E402
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else DEMO / "shots"
 
 
@@ -37,6 +39,7 @@ def main() -> None:
     app = App()
     app.journal = actions.Journal(DEMO / "journal.json")
     app.geometry("1280x840+30+30")
+    app.attributes("-topmost", True)   # screen grabs copy whatever is on top, so stay in front
     steps = []
     log = []
 
@@ -68,7 +71,7 @@ def main() -> None:
 
     @step
     def scan():
-        app.set_folder(str(DEMO / "Downloads"))
+        app.set_folder(str(DOWNLOADS))
         app.show("overview")
         app.views["overview"].start()
         wait_idle(run_next)

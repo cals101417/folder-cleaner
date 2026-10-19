@@ -39,7 +39,7 @@ class OrganizeView(ToolView):
         self.mode_hint.grid(row=0, column=1, sticky="w", padx=(14, 0))
         self.skipped_btn = ghost_button(bar, "Staying put", self._show_skipped, width=130)
 
-        self.chips = ctk.CTkFrame(b, fg_color="transparent")
+        self.chips = ctk.CTkFrame(b, fg_color="transparent", height=1)  # empty frames default to 200 px
         self.chips.grid(row=1, column=0, sticky="ew", pady=(0, 10))
 
         self.table = Table(b, [("name", "File", 300, "w"), ("arrow", "", 40, "center"),
@@ -104,6 +104,7 @@ class OrganizeView(ToolView):
     def _plan_failed(self, message: str) -> None:
         self.failed(message)
         self._empty()
+        self.table.show_empty("This folder can't be organized. The reason is below.")
 
     def _planned(self, plan: organize.Plan) -> None:
         self.set_busy(False)

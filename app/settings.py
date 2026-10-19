@@ -12,6 +12,7 @@ from .config import APP_NAME
 DEFAULTS = {
     "folder": "",
     "keep_policy": "oldest",
+    "dupe_min_size": "1 MB",
     "organize_mode": "type",
 }
 

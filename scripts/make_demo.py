@@ -1,4 +1,7 @@
-"""Creates demo/Downloads: a realistic messy folder for screenshots and manual testing.
+"""Creates a realistic messy Downloads folder for screenshots and manual testing.
+
+It lives in Documents/MJC Cleaner Demo, outside this repo: the repo is a code project, and the
+app (correctly) leaves anything inside a code project alone. Set MJC_DEMO_DIR to put it elsewhere.
 
 Usage: python scripts/make_demo.py   (re-running adds nothing if the folder exists)
 """
@@ -9,7 +12,7 @@ import shutil
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1] / "demo" / "Downloads"
+ROOT = Path(os.environ.get("MJC_DEMO_DIR") or Path.home() / "Documents" / "MJC Cleaner Demo") / "Downloads"
 MB = 1024 * 1024
 DAY = 86400
 
@@ -30,12 +33,18 @@ NESTED = [
     ("Course videos/week1.mp4", 140 * MB, 800), ("Course videos/week2.mp4", 150 * MB, 790),
     ("Projects/brand/logo-final.psd", 38 * MB, 300), ("Projects/brand/logo-final-v2.psd", 39 * MB, 290),
 ]
+CODE_PROJECT = [  # a web project: its node_modules copies must never be offered as duplicates
+    ("Projects/website/package.json", 0.001 * MB, 20), ("Projects/website/src/app.js", 0.02 * MB, 20),
+    ("Projects/website/node_modules/react/index.js", 0.1 * MB, 20),
+]
 DUPLICATES = [  # (copy, original) — exact copies
     ("Projects/brand/IMG_4021 (1).JPG", "IMG_4021.JPG"),
     ("Old Phone Backup/DCIM/IMG_4021.JPG", "IMG_4021.JPG"),
     ("Invoice_2026_0412 (1).pdf", "Invoice_2026_0412.pdf"),
     ("Course videos/week1 (copy).mp4", "Course videos/week1.mp4"),
     ("vlc-3.0.21-win64 (1).exe", "vlc-3.0.21-win64.exe"),
+    ("Projects/website/public/team-call.mp4", "team-call.mp4"),   # inside a project: left alone
+    ("Projects/website/node_modules/react-copy/index.js", "Projects/website/node_modules/react/index.js"),
 ]
 
 
@@ -54,7 +63,7 @@ def main() -> None:
         print("exists:", ROOT)
         return
     rng = random.Random(7)
-    for rel, size, age in LOOSE + NESTED:
+    for rel, size, age in LOOSE + NESTED + CODE_PROJECT:
         make(rel, size, age, rng)
     for copy, original in DUPLICATES:
         dst = ROOT / copy

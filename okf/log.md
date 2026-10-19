@@ -1,3 +1,4 @@
 # Log
 
 - **2026-10-19**: v0.1.0 built. Core (scan, sizes, dupes, rules, actions, organize) with tests. UI with Overview, Duplicates, Organize and History & undo. Added a Recycle Bin pre-check that blocks silent permanent deletes. Benchmarked 100k files: scan 0.4 s, duplicates 6.6 s in the worst case, cancel under 0.2 s. Full UI flow verified with `scripts/screenshots.py`.
+- **2026-10-19**: v0.1.1. Duplicates was flagging thousands of `node_modules` files on a real Documents folder. Added code-project detection (markers plus tool-managed folders): Duplicates skips them, Organize refuses them, and Overview marks them orange and warns before recycling. Duplicates now default to files over 1 MB. Real Documents went from 15,533 groups to 0, with 7 repos recognized. Demo folder moved outside the repo.

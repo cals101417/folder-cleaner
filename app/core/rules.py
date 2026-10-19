@@ -113,6 +113,73 @@ def default_guard() -> Guard:
     return Guard.from_environment()
 
 
+# ---------- code projects ----------
+# Files inside a code project belong to its tools: every project needs its own full copy, so
+# "duplicate" files there aren't waste, and moving or recycling them breaks builds.
+# Only strong markers count, so a stray requirements.txt in Downloads doesn't make it a project.
+PROJECT_FILES = {".git", ".hg", ".svn", "package.json", "pyproject.toml", "cargo.toml", "go.mod",
+                 "composer.json", "pom.xml", "build.gradle", "build.gradle.kts", "pubspec.yaml",
+                 "deno.json", "angular.json"}
+PROJECT_SUFFIXES = (".sln", ".csproj", ".vbproj", ".fsproj", ".vcxproj", ".xcodeproj", ".xcworkspace")
+# Folders a developer tool fills and manages, wherever they appear.
+MANAGED_DIRS = {"node_modules", ".git", ".hg", ".svn", ".venv", "venv", "__pycache__", "site-packages",
+                ".tox", ".gradle", ".next", ".nuxt", ".angular", ".dart_tool", ".parcel-cache",
+                "bower_components", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".terraform"}
+
+
+def project_marker(names) -> str | None:
+    """The first name in a folder listing that marks the folder as a code project, or None."""
+    for name in names:
+        low = name.lower()
+        if low in PROJECT_FILES or low.endswith(PROJECT_SUFFIXES):
+            return name
+    return None
+
+
+def is_managed_dir(name: str) -> bool:
+    return name.lower() in MANAGED_DIRS
+
+
+@dataclass(frozen=True)
+class CodeProject:
+    root: str
+    marker: str        # e.g. "package.json", or "node_modules" for a managed folder
+    managed: bool      # True when `root` is a tool-managed folder like node_modules
+
+    def describe(self) -> str:
+        if self.managed:
+            return f"{self.marker} folder (managed by a developer tool)"
+        return f"code project (it contains {self.marker})"
+
+
+def enclosing_project(path: str) -> CodeProject | None:
+    """The code project `path` is in (or is), looking at the path and its parent folders.
+
+    Drive roots, the user folder and its parent are never treated as projects, so a stray
+    package.json in C:\\Users\\me doesn't turn every file on the PC into "code".
+    """
+    home = os.path.expanduser("~")
+    skip = {_norm(home), _norm(os.path.dirname(home))}
+    probe = os.path.abspath(path)
+    while True:
+        n = _norm(probe)
+        if _is_drive_root(n) or n in skip:
+            return None
+        name = os.path.basename(probe)
+        if is_managed_dir(name):
+            return CodeProject(probe, name, True)
+        try:
+            marker = project_marker(os.listdir(probe))
+        except OSError:
+            marker = None
+        if marker:
+            return CodeProject(probe, marker, False)
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            return None
+        probe = parent
+
+
 # ---------- file types ----------
 CATEGORIES: dict[str, set[str]] = {
     "Images": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".heic", ".heif", ".tif", ".tiff",

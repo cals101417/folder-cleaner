@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .errors import Cancelled, CleanerError, friendly_os_error
-from .rules import Guard, default_guard
+from .rules import CodeProject, Guard, default_guard, enclosing_project, is_managed_dir, project_marker
 
 # Windows file attribute bits (st_file_attributes)
 HIDDEN = 0x2
@@ -29,6 +29,7 @@ class FileRecord:
     size: int
     mtime_ns: int
     attrs: int = 0
+    project: str = ""   # root of the code project this file belongs to ("" if none)
 
     @property
     def name(self) -> str:
@@ -64,11 +65,23 @@ class ScanResult:
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (path, reason)
     links_skipped: int = 0
     protected_skipped: list[str] = field(default_factory=list)
+    projects: dict[str, CodeProject] = field(default_factory=dict)   # outermost project roots found
     seconds: float = 0.0
 
     @property
     def total_size(self) -> int:
         return sum(f.size for f in self.files)
+
+    def project_of(self, path: str) -> CodeProject | None:
+        """The code project containing `path` (a file or folder), if any."""
+        probe = path
+        while True:
+            if probe in self.projects:
+                return self.projects[probe]
+            parent = os.path.dirname(probe)
+            if parent == probe or len(parent) < len(self.root):
+                return None
+            probe = parent
 
 
 @dataclass(frozen=True)
@@ -78,9 +91,10 @@ class ScanProgress:
     folder: str
 
 
-def record_for(entry: os.DirEntry) -> FileRecord:
+def record_for(entry: os.DirEntry, project: str = "") -> FileRecord:
     st = entry.stat(follow_symlinks=False)
-    return FileRecord(entry.path, st.st_size, st.st_mtime_ns, getattr(st, "st_file_attributes", 0))
+    return FileRecord(entry.path, st.st_size, st.st_mtime_ns, getattr(st, "st_file_attributes", 0),
+                      project)
 
 
 def _is_link(entry: os.DirEntry) -> bool:
@@ -96,52 +110,56 @@ def scan(root: str, *, guard: Guard | None = None,
     started = last = time.monotonic()
     result = ScanResult(root=root)
     files, total, seen = result.files, 0, 0
-    stack = [root]
+    outer = enclosing_project(root)       # the picked folder may itself be inside a project
+    if outer is not None:
+        result.projects[root] = outer
+    stack = [(root, root if outer else "")]
 
     while stack:
         if cancel is not None and cancel.is_set():
             raise Cancelled("Scan cancelled.")
-        folder = stack.pop()
+        folder, project = stack.pop()
         try:
-            it = os.scandir(folder)
+            with os.scandir(folder) as it:
+                entries = list(it)
         except OSError as exc:
             result.skipped.append((folder, friendly_os_error(exc)))
             continue
         result.folders.append(folder)
+        if not project:
+            marker = project_marker(e.name for e in entries)
+            if marker:
+                project = folder
+                result.projects[folder] = CodeProject(folder, marker, False)
         subfolders = []
-        with it:
-            while True:
-                try:
-                    entry = next(it)
-                except StopIteration:
-                    break
-                except OSError as exc:  # the listing itself broke part-way
-                    result.skipped.append((folder, friendly_os_error(exc)))
-                    break
-                try:
-                    if _is_link(entry):
-                        result.links_skipped += 1
-                    elif entry.is_dir(follow_symlinks=False):
-                        if guard.is_protected(entry.path):
-                            result.protected_skipped.append(entry.path)
-                        else:
-                            subfolders.append(entry.path)
-                    elif entry.is_file(follow_symlinks=False):
-                        rec = record_for(entry)
-                        files.append(rec)
-                        total += rec.size
-                except OSError as exc:
-                    result.skipped.append((entry.path, friendly_os_error(exc)))
+        for entry in entries:
+            try:
+                if _is_link(entry):
+                    result.links_skipped += 1
+                elif entry.is_dir(follow_symlinks=False):
+                    if guard.is_protected(entry.path):
+                        result.protected_skipped.append(entry.path)
+                    elif not project and is_managed_dir(entry.name):
+                        result.projects[entry.path] = CodeProject(entry.path, entry.name, True)
+                        subfolders.append((entry.path, entry.path))
+                    else:
+                        subfolders.append((entry.path, project))
+                elif entry.is_file(follow_symlinks=False):
+                    rec = record_for(entry, project)
+                    files.append(rec)
+                    total += rec.size
+            except OSError as exc:
+                result.skipped.append((entry.path, friendly_os_error(exc)))
 
-                seen += 1
-                if seen & 255 == 0:
-                    if cancel is not None and cancel.is_set():
-                        raise Cancelled("Scan cancelled.")
-                    now = time.monotonic()
-                    if progress is not None and now - last >= PROGRESS_EVERY:
-                        last = now
-                        progress(ScanProgress(len(files), total, folder))
-        stack.extend(reversed(sorted(subfolders, key=str.lower)))
+            seen += 1
+            if seen & 255 == 0:
+                if cancel is not None and cancel.is_set():
+                    raise Cancelled("Scan cancelled.")
+                now = time.monotonic()
+                if progress is not None and now - last >= PROGRESS_EVERY:
+                    last = now
+                    progress(ScanProgress(len(files), total, folder))
+        stack.extend(reversed(sorted(subfolders, key=lambda s: s[0].lower())))
 
     result.seconds = time.monotonic() - started
     if progress is not None:

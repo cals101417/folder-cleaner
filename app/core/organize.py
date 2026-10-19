@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from . import actions
-from .rules import Guard, category_for, default_guard
+from .errors import CleanerError
+from .rules import Guard, category_for, default_guard, enclosing_project
 from .scan import FileRecord, top_level
 
 MODES = {"type": "By type", "date": "By month"}
@@ -66,6 +67,24 @@ def _skip_reason(rec: FileRecord) -> str | None:
     return None
 
 
+def refuse_code_project(root: str) -> None:
+    """Sorting a project folder would move files its tools need (package.json, .sln...)."""
+    project = enclosing_project(root)
+    if project is None:
+        return
+    name = os.path.basename(root) or root
+    if project.managed:
+        raise CleanerError(f"{name} is part of a {project.marker} folder, which a developer tool "
+                           "manages. Organize won't move anything in it. Pick a different folder.")
+    if os.path.normcase(project.root) == os.path.normcase(root):
+        where = "is"
+    else:
+        where = f"is inside {os.path.basename(project.root)}, which is"
+    raise CleanerError(f"{name} {where} a code project (it contains {project.marker}). Sorting it "
+                       "would move files the project needs, so Organize won't touch it. If it isn't "
+                       f"a project, move {project.marker} somewhere else and try again.")
+
+
 def plan(root: str, mode: str = "type", *, guard: Guard | None = None,
          records: list[FileRecord] | None = None) -> Plan:
     """Where each loose file would go. Name clashes get " (2)", " (3)"... never an overwrite."""
@@ -73,6 +92,7 @@ def plan(root: str, mode: str = "type", *, guard: Guard | None = None,
         raise ValueError(mode)
     guard = guard or default_guard()
     root = guard.check_root(root)
+    refuse_code_project(root)
     skipped: list[tuple[str, str]] = []
     if records is None:
         records, skipped = top_level(root, guard=guard)

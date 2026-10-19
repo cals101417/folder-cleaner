@@ -103,7 +103,8 @@ class OverviewView(ToolView):
         self.folders.grid(row=3, column=1, sticky="nsew")
         self.folders.tree.bind("<Double-1>", self._drill)
         self.folders.tree.bind("<Return>", self._drill)
-        hint(b, "Tip: double-click a folder to look inside it. Ctrl or Shift-click to pick several files."
+        hint(b, "Tip: double-click a folder to look inside it. Ctrl or Shift-click to pick several files. "
+                "Orange rows are inside code projects; recycling them can break that project."
              ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         self.recycle_btn = primary_button(self.footer, "Recycle", self.recycle, width=200, danger=True)
@@ -217,7 +218,7 @@ class OverviewView(ToolView):
         biggest = top[0].size if top else 1
         for i, rec in enumerate(top):
             folder = os.path.relpath(rec.folder, result.root)
-            self.files.tree.insert("", "end", iid=str(i), values=(
+            self.files.tree.insert("", "end", iid=str(i), tags=("warn",) if rec.project else (), values=(
                 rec.name, sizes.human_size(rec.size), size_bar(rec.size / biggest),
                 when(rec.mtime), "(top folder)" if folder == "." else folder))
         where = "" if under is None else f" in {os.path.basename(self.here)}"
@@ -238,8 +239,10 @@ class OverviewView(ToolView):
         kids = sizes.largest_folders(self.tree, self.here, 200)
         top_size = kids[0][1] if kids and kids[0][1] else 1
         for path, size, count in kids:
-            self.folders.tree.insert("", "end", iid=path, values=(
-                os.path.basename(path), sizes.human_size(size), size_bar(size / top_size), f"{count:,}"))
+            code = result.project_of(path) is not None
+            name = os.path.basename(path) + ("   ‹code›" if code else "")
+            self.folders.tree.insert("", "end", iid=path, tags=("warn",) if code else (), values=(
+                name, sizes.human_size(size), size_bar(size / top_size), f"{count:,}"))
         self.folders.show_empty("" if kids else "No subfolders.")
         here_name = os.path.basename(self.here) or self.here
         self.folders_label.configure(text=f"Largest folders in {here_name}".upper())
@@ -308,12 +311,17 @@ class OverviewView(ToolView):
         if not chosen or self.worker.busy:
             return
         total = sum(r.size for r in chosen)
+        detail = ("You can restore them from the Recycle Bin until it's emptied. "
+                  "Files that changed since the scan are skipped.")
+        in_code = sum(1 for r in chosen if r.project)
+        if in_code:
+            detail = (f"Careful: {plural(in_code, 'file')} {'is' if in_code == 1 else 'are'} inside a "
+                      "code project, which may stop working without "
+                      f"{'it' if in_code == 1 else 'them'}. " + detail)
         if not confirm(self, "Send to the Recycle Bin?",
                        f"{plural(len(chosen), 'file')} ({sizes.human_size(total)}) will go to the "
                        "Recycle Bin.",
-                       f"Recycle {plural(len(chosen), 'file')}",
-                       detail="You can restore them from the Recycle Bin until it's emptied. "
-                              "Files that changed since the scan are skipped."):
+                       f"Recycle {plural(len(chosen), 'file')}", detail=detail):
             return
         self.set_busy(True, "Sending files to the Recycle Bin…")
         progress = Throttle(self.worker, self._action_progress)

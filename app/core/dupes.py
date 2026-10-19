@@ -38,6 +38,9 @@ class DupeResult:
     skipped: list[tuple[str, str]] = field(default_factory=list)
     online_only: int = 0
     compared: int = 0     # files that had at least one same-size partner
+    in_projects: int = 0  # files left out because they belong to a code project
+    too_small: int = 0    # files left out for being under min_size
+    min_size: int = 1
 
     @property
     def wasted(self) -> int:
@@ -109,15 +112,23 @@ def _regroup(groups: Iterable[list[FileRecord]], key: Callable[[FileRecord], byt
     return out
 
 
-def find_duplicates(files: Iterable[FileRecord], *,
+def find_duplicates(files: Iterable[FileRecord], *, min_size: int = 1,
                     progress: Callable[[DupeProgress], None] | None = None,
                     cancel: threading.Event | None = None) -> DupeResult:
-    result = DupeResult()
+    """Groups of identical files. Files inside code projects are never candidates: each
+    project needs its own copy, so recycling one would break it."""
+    result = DupeResult(min_size=max(1, min_size))
 
     # Stage 1: only same-size files can match.
     by_size: dict[int, list[FileRecord]] = defaultdict(list)
     for rec in files:
         if rec.size == 0:
+            continue
+        if rec.project:
+            result.in_projects += 1
+            continue
+        if rec.size < result.min_size:
+            result.too_small += 1
             continue
         if rec.online_only:
             result.online_only += 1

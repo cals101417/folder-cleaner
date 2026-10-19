@@ -13,6 +13,7 @@ Each rule, where it's enforced, and the test that covers it.
 | Undo never overwrites | `actions.undo` skips a file if its original spot is taken or the file changed | `test_undo_never_overwrites_a_new_file` |
 | Keep at least one copy | `dupes.can_mark` (UI) and `dupes.selected_for_removal` (raises) | `test_must_keep_at_least_one_copy` |
 | Confirm every batch | `widgets.confirm` before recycle and move; undo also confirms | manual, plus `scripts/screenshots.py` |
+| Code projects untouched by Duplicates and Organize | `rules.enclosing_project`, `project_marker` and `MANAGED_DIRS`; `scan` tags each `FileRecord.project`; `dupes.find_duplicates` drops tagged files; `organize.refuse_code_project`. Overview only warns (orange rows, confirm text). | `tests/test_code_projects.py` |
 | One bad file never crashes the job | Every per-file OS call is wrapped; reasons come from `errors.friendly_os_error` | `test_scan_counts_unreadable_folders`, `test_unreadable_file_is_counted_not_fatal`, `test_trash_failure_is_reported_not_raised` |
 
 `os.rmdir` is used once, in undo, to remove folders that a move batch created. It only succeeds on empty folders.
