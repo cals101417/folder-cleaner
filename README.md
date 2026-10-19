@@ -1,6 +1,6 @@
 # MJC Folder Cleaner
 
-[![tests](https://github.com/michaelcaligner/mjc-folder-cleaner/actions/workflows/tests.yml/badge.svg)](https://github.com/michaelcaligner/mjc-folder-cleaner/actions/workflows/tests.yml)
+[![tests](https://github.com/cals101417/mjc-folder-cleaner/actions/workflows/tests.yml/badge.svg)](https://github.com/cals101417/mjc-folder-cleaner/actions/workflows/tests.yml)
 
 A small, offline Windows app that shows **what's taking up space**, finds **duplicate files**, and **tidies messy folders** like Downloads. It never deletes anything for good: every delete goes to the Recycle Bin, and every move can be undone.
 
@@ -10,7 +10,7 @@ Built by [Michael Caligner](https://mcalignerdev.com). It's a sibling to MJC PDF
 
 ## Download
 
-**[Download the latest `MJC Folder Cleaner.exe`](https://github.com/michaelcaligner/mjc-folder-cleaner/releases/latest)** from GitHub Releases. It's one file with no installer. Windows 10 or 11.
+**[Download the latest `MJC Folder Cleaner.exe`](https://github.com/cals101417/mjc-folder-cleaner/releases/latest)** from GitHub Releases. It's one file with no installer. Windows 10 or 11.
 
 The `.exe` isn't code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Click **More info**, then **Run anyway**.
 
