@@ -1,0 +1,10 @@
+"""App identity. Rename or rebrand here; nothing else hard-codes these."""
+
+APP_NAME = "MJC Folder Cleaner"
+APP_SHORT = "Folder Cleaner"
+APP_TAGLINE = "See what fills your disk, find duplicates, tidy messy folders."
+AUTHOR = "Michael Caligner"
+SITE_URL = "https://mcalignerdev.com"
+SITE_LABEL = "mcalignerdev.com"
+REPO_URL = "https://github.com/michaelcaligner/mjc-folder-cleaner"
+VERSION = "0.1.0"
